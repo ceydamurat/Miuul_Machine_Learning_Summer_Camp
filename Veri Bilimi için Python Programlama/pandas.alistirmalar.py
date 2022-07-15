@@ -53,7 +53,7 @@ df[(df["fare"] > 500) | (df["age"] > 70)]
 
 # Görev 11: Her bir değişkendeki boş değerlerin toplamını bulunuz.
 
-df.isnull().sum()   # boş değerleri görmek istersek isnull()
+df.isnull().sum()   
 
 # Görev 12: who değişkenini dataframe’den çıkarınız
 
@@ -61,7 +61,7 @@ df.drop("who",axis=1)
 
 # Görev 13: deck değikenindeki boş değerleri deck değişkenin en çok tekrar eden değeri (mode) ile doldurunuz.
 
-df["deck"].fillna(df["deck"].mode(), inplace=True)  # boş değerlerin yerine bir şey atamak istersek fillna()
+df["deck"].fillna(df["deck"].mode(), inplace=True)  
 df.head()
 
 # Görev 14: age değikenindeki boş değerleri age değişkenin medyanı ile doldurunuz.
