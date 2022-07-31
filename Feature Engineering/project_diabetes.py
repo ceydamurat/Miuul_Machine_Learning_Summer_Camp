@@ -1,12 +1,10 @@
-######################################################
-# Diabetes Prediction with Logistic Regression
-######################################################
+##############################
+# DIABETES FEATURE ENGINEERING
+##############################
 
-# İş Problemi:
-
-# Özellikleri belirtildiğinde kişilerin diyabet hastası olup
-# olmadıklarını tahmin edebilecek bir makine öğrenmesi
-# modeli geliştirebilir misiniz?
+# Problem : Özellikleri belirtildiğinde kişilerin diyabet hastası olup olmadıklarını tahmin edebilecek bir makine
+# öğrenmesi modeli geliştirilmesi istenmektedir. Modeli geliştirmeden önce gerekli olan veri analizi ve özellik
+# mühendisliği adımlarını gerçekleştirmeniz beklenmektedir.
 
 # Veri seti ABD'deki Ulusal Diyabet-Sindirim-Böbrek Hastalıkları Enstitüleri'nde tutulan büyük veri setinin
 # parçasıdır. ABD'deki Arizona Eyaleti'nin en büyük 5. şehri olan Phoenix şehrinde yaşayan 21 yaş ve üzerinde olan
@@ -14,10 +12,9 @@
 # bağımsız değişkenden oluşmaktadır. Hedef değişken "outcome" olarak belirtilmiş olup; 1 diyabet test sonucunun
 # pozitif oluşunu, 0 ise negatif oluşunu belirtmektedir.
 
-# Değişkenler
 # Pregnancies: Hamilelik sayısı
-# Glucose: Glikoz.
-# BloodPressure: Kan basıncı.
+# Glucose: Glikoz
+# BloodPressure: Kan basıncı (Diastolic(Küçük Tansiyon))
 # SkinThickness: Cilt Kalınlığı
 # Insulin: İnsülin.
 # BMI: Beden kitle indeksi.
@@ -26,27 +23,168 @@
 # Outcome: Kişinin diyabet olup olmadığı bilgisi. Hastalığa sahip (1) ya da değil (0)
 
 
-# 1. Exploratory Data Analysis (Keşifçi Veri Analizi)
-# 2. Data Preprocessing  (Veri Ön İşleme)
-# 3. Model & Prediction  (Modelleme ve Tahmin)
-# 4. Model Evaluation    (Model Başarısı Değerlendirme)
-# 5. Model Validation: Holdout  (Model Doğrulama)
-# 6. Model Validation: 10-Fold Cross Validation
-# 7. Prediction for A New Observation
-
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+import warnings
+warnings.simplefilter(action="ignore")
 
-from sklearn.preprocessing import RobustScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score, confusion_matrix, classification_report, plot_roc_curve
-from sklearn.model_selection import train_test_split, cross_validate
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 170)
+pd.set_option('display.max_rows', 20)
+pd.set_option('display.float_format', lambda x: '%.3f' % x)
+
+df = pd.read_csv("feature_engineering/datasets/diabetes.csv")
+
+def load():
+    data=pd.read_csv("feature_engineering/datasets/diabetes.csv")
+    return data
+
+df=load()
+df.head()
 
 
-def outlier_thresholds(dataframe, col_name, q1=0.05, q3=0.95):
+########################################################
+# GÖREV 1: KEŞİFÇİ VERİ ANALİZİ
+########################################################
+
+#Adım 1: Genel resmi inceleyiniz.
+
+def check_df(dataframe, head=5):
+    print("##################### Shape #####################")
+    print(dataframe.shape)
+    print("##################### Types #####################")
+    print(dataframe.dtypes)
+    print("##################### Head #####################")
+    print(dataframe.head(head))
+    print("##################### Tail #####################")
+    print(dataframe.tail(head))
+    print("##################### NA #####################")
+    print(dataframe.isnull().sum())
+    print("##################### Quantiles #####################")
+    print(dataframe.describe([0, 0.05, 0.50, 0.95, 0.99, 1]).T)
+
+check_df(df)
+
+#Adım 2: Numerik ve kategorik değişkenleri yakalayınız.
+
+def grab_col_names(dataframe, cat_th=10, car_th=20):
+    """
+
+        Veri setindeki kategorik, numerik ve kategorik fakat kardinal değişkenlerin isimlerini verir.
+        Not: Kategorik değişkenlerin içerisine numerik görünümlü kategorik değişkenler de dahildir.
+
+        Parameters
+        ------
+            dataframe: dataframe
+                    Değişken isimleri alınmak istenilen dataframe
+            cat_th: int, optional
+                    numerik fakat kategorik olan değişkenler için sınıf eşik değeri
+            car_th: int, optinal
+                    kategorik fakat kardinal değişkenler için sınıf eşik değeri
+
+        Returns
+        ------
+            cat_cols: list
+                    Kategorik değişken listesi
+            num_cols: list
+                    Numerik değişken listesi
+            cat_but_car: list
+                    Kategorik görünümlü kardinal değişken listesi
+
+        Examples
+        ------
+            import seaborn as sns
+            df = sns.load_dataset("iris")
+            print(grab_col_names(df))
+
+
+        Notes
+        ------
+            cat_cols + num_cols + cat_but_car = toplam değişken sayısı
+            num_but_cat cat_cols'un içerisinde.
+            Return olan 3 liste toplamı toplam değişken sayısına eşittir: cat_cols + num_cols + cat_but_car = değişken sayısı
+
+        """
+
+    # cat_cols, cat_but_car
+    cat_cols = [col for col in dataframe.columns if dataframe[col].dtypes == "O"]
+    num_but_cat = [col for col in dataframe.columns if dataframe[col].nunique() < cat_th and
+                   dataframe[col].dtypes != "O"]
+    cat_but_car = [col for col in dataframe.columns if dataframe[col].nunique() > car_th and
+                   dataframe[col].dtypes == "O"]
+    cat_cols = cat_cols + num_but_cat
+    cat_cols = [col for col in cat_cols if col not in cat_but_car]
+
+    # num_cols
+    num_cols = [col for col in dataframe.columns if dataframe[col].dtypes != "O"]
+    num_cols = [col for col in num_cols if col not in num_but_cat]
+
+    print(f"Observations: {dataframe.shape[0]}")
+    print(f"Variables: {dataframe.shape[1]}")
+    print(f'cat_cols: {len(cat_cols)}')
+    print(f'num_cols: {len(num_cols)}')
+    print(f'cat_but_car: {len(cat_but_car)}')
+    print(f'num_but_cat: {len(num_but_cat)}')
+    return cat_cols, num_cols, cat_but_car
+
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+
+
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+
+
+#Adım 3: Numerik ve kategorik değişkenlerin analizini yapınız.
+
+# Kategorik değişken analizi:
+
+def cat_summary(dataframe, col_name, plot=False):
+    print(pd.DataFrame({col_name: dataframe[col_name].value_counts(),
+                        "Ratio": 100 * dataframe[col_name].value_counts() / len(dataframe)}))
+    print("##########################################")
+    if plot:
+        sns.countplot(x=dataframe[col_name], data=dataframe)
+        plt.show()
+
+
+cat_summary(df, "Outcome")
+
+
+# Numerik değişken analizi:
+
+def num_summary(dataframe, numerical_col, plot=False):
+    quantiles = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+    print(dataframe[numerical_col].describe(quantiles).T)
+
+    if plot:
+        dataframe[numerical_col].hist(bins=20)
+        plt.xlabel(numerical_col)
+        plt.title(numerical_col)
+        plt.show(block=True)
+
+
+for col in num_cols:
+    num_summary(df, col, plot=True)
+
+
+#Adım 4: Hedef değişken analizi yapınız.(Kategorik değişkenlere göre hedef değişkenin ortalaması, hedef değişkene göre numerik değişkenlerin ortalaması)
+
+def target_summary_with_num(dataframe, target, numerical_col):
+    print(dataframe.groupby(target).agg({numerical_col: "mean"}), end="\n\n\n")
+
+for col in num_cols:
+    target_summary_with_num(df, "Outcome", col)
+
+
+#Adım 5: Aykırı gözlem analizi yapınız.
+
+def outlier_thresholds(dataframe, col_name, q1=0.25, q3=0.75):
     quartile1 = dataframe[col_name].quantile(q1)
     quartile3 = dataframe[col_name].quantile(q3)
     interquantile_range = quartile3 - quartile1
@@ -61,242 +199,279 @@ def check_outlier(dataframe, col_name):
     else:
         return False
 
-def replace_with_thresholds(dataframe, variable):
-    low_limit, up_limit = outlier_thresholds(dataframe, variable)
+check_outlier(df,df.columns)
+
+#Adım 6: Eksik gözlem analizi yapınız.
+
+def missing_values_table(dataframe, na_name=False):
+    na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
+
+    n_miss = dataframe[na_columns].isnull().sum().sort_values(ascending=False)
+    ratio = (dataframe[na_columns].isnull().sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+    missing_df = pd.concat([n_miss, np.round(ratio, 2)], axis=1, keys=['n_miss', 'ratio'])
+    print(missing_df, end="\n")
+
+    if na_name:
+        return na_columns
+
+missing_values_table(df)
+
+#Adım 7: Korelasyon analizi yapınız.
+
+def high_correlated_cols(dataframe, plot=False, corr_th=0.90):
+    corr = dataframe.corr()
+    corr_matrix = corr.abs()
+    upper_triangle_matrix = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    drop_list = [col for col in upper_triangle_matrix.columns if any(upper_triangle_matrix[col] > corr_th)]
+    if plot:
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+        sns.set(rc={"figure.figsize": (10, 10)})
+        sns.heatmap(corr, cmap="RdBu")
+        plt.show()
+    return drop_list
+
+
+high_cor_cols = high_correlated_cols(df)
+
+
+########################################################
+# GÖREV 2: FEATURE ENGINEERING
+########################################################
+
+#Adım 1: Eksik ve aykırı değerler için gerekli işlemleri yapınız.
+# Veri setinde eksik gözlem bulunmamakta ama Glikoz, Insulin vb.
+# değişkenlerde 0 değeri içeren gözlem birimleri eksik değeri  ifade ediyor olabilir.
+# Örneğin; bir kişinin glikoz veya insulin değeri 0 olamayacaktır.
+# Bu durumudikkate alarak sıfır değerlerini ilgili değerlerde
+# NaN olarak atama yapıp sonrasında eksik değerlere işlemleri uygulayabilirsiniz.
+
+
+zero_columns = [col for col in df.columns if (df[col].min() == 0 and col not in ["Pregnancies", "Outcome"])]
+
+zero_columns
+
+# Gözlem birimlerinde 0 olan degiskenlerin her birisine gidip 0 iceren gozlem degerlerini NaN ile değiştirdik.
+for col in zero_columns:
+    df[col] = np.where(df[col] == 0, np.nan, df[col])
+
+# Eksik Gözlem Analizi
+df.isnull().sum()
+
+
+def missing_values_table(dataframe, na_name=False):
+    na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
+    n_miss = dataframe[na_columns].isnull().sum().sort_values(ascending=False)
+    ratio = (dataframe[na_columns].isnull().sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+    missing_df = pd.concat([n_miss, np.round(ratio, 2)], axis=1, keys=['n_miss', 'ratio'])
+    print(missing_df, end="\n")
+    if na_name:
+        return na_columns
+
+
+na_columns = missing_values_table(df, na_name=True)
+
+
+# Eksik Değerlerin Bağımlı Değişken ile İlişkisinin İncelenmesi
+def missing_vs_target(dataframe, target, na_columns):
+    temp_df = dataframe.copy()
+    for col in na_columns:
+        temp_df[col + '_NA_FLAG'] = np.where(temp_df[col].isnull(), 1, 0)
+    na_flags = temp_df.loc[:, temp_df.columns.str.contains("_NA_")].columns
+    for col in na_flags:
+        print(pd.DataFrame({"TARGET_MEAN": temp_df.groupby(col)[target].mean(),
+                            "Count": temp_df.groupby(col)[target].count()}), end="\n\n\n")
+
+
+missing_vs_target(df, "Outcome", na_columns)
+
+# Eksik Değerlerin Doldurulması
+for col in zero_columns:
+    df.loc[df[col].isnull(), col] = df[col].median()
+
+df.isnull().sum()
+
+
+##################################
+# AYKIRI DEĞER ANALİZİ
+##################################
+
+def outlier_thresholds(dataframe, col_name, q1=0.05, q3=0.95):
+    quartile1 = dataframe[col_name].quantile(q1)
+    quartile3 = dataframe[col_name].quantile(q3)
+    interquantile_range = quartile3 - quartile1
+    up_limit = quartile3 + 1.5 * interquantile_range
+    low_limit = quartile1 - 1.5 * interquantile_range
+    return low_limit, up_limit
+
+
+def check_outlier(dataframe, col_name):
+    low_limit, up_limit = outlier_thresholds(dataframe, col_name)
+    if dataframe[(dataframe[col_name] > up_limit) | (dataframe[col_name] < low_limit)].any(axis=None):
+        return True
+    else:
+        return False
+
+
+def replace_with_thresholds(dataframe, variable, q1=0.05, q3=0.95):
+    low_limit, up_limit = outlier_thresholds(dataframe, variable, q1=0.05, q3=0.95)
     dataframe.loc[(dataframe[variable] < low_limit), variable] = low_limit
     dataframe.loc[(dataframe[variable] > up_limit), variable] = up_limit
 
 
-pd.set_option('display.max_columns', None)
-pd.set_option('display.float_format', lambda x: '%.3f' % x)
-pd.set_option('display.width', 500)
-
-
-
-######################################################
-# Exploratory Data Analysis
-######################################################
-
-df = pd.read_csv("machine_learning/datasets/diabetes.csv")
-df.head()
-df.shape
-
-##########################
-# Target'ın Analizi
-##########################
-
-df["Outcome"].value_counts()
-
-sns.countplot(x="Outcome", data=df)
-plt.show(block=True)
-
-100 * df["Outcome"].value_counts() / len(df)
-
-
-##########################
-# Feature'ların Analizi
-##########################
-
-df.head()
-
-df.describe().T
-
-df["BloodPressure"].hist(bins=20)
-plt.xlabel("BloodPressure")
-plt.show(block=True)
-
-def plot_numerical_col(dataframe, numerical_col):
-    dataframe[numerical_col].hist(bins=20)
-    plt.xlabel(numerical_col)
-    plt.show(block=True)
+# Aykırı Değer Analizi ve Baskılama İşlemi
+for col in df.columns:
+    print(col, check_outlier(df, col))
+    if check_outlier(df, col):
+        replace_with_thresholds(df, col)
 
 for col in df.columns:
-    plot_numerical_col(df, col)
-
-cols = [col for col in df.columns if "Outcome" not in col]
-
-for col in cols:
-    plot_numerical_col(df, col)
+    print(col, check_outlier(df, col))
 
 
+#Adım 2: Yeni değişkenler oluşturunuz.
 
-##########################
-# Target vs Features
-##########################
+# Yaş değişkenini kategorilere ayırıp yeni yaş değişkeni oluşturulması
+df.loc[(df["Age"] >= 21) & (df["Age"] < 50), "NEW_AGE_CAT"] = "mature"
+df.loc[(df["Age"] >= 50), "NEW_AGE_CAT"] = "senior"
 
-df.groupby("Outcome").agg({"Pregnancies": "mean"})
+# BMI 18,5 aşağısı underweight, 18.5 ile 24.9 arası normal, 24.9 ile 29.9 arası Overweight ve 30 üstü obez
+df['NEW_BMI'] = pd.cut(x=df['BMI'], bins=[0, 18.5, 24.9, 29.9, 100],
+                       labels=["Underweight", "Healthy", "Overweight", "Obese"])
 
-def target_summary_with_num(dataframe, target, numerical_col):
-    print(dataframe.groupby(target).agg({numerical_col: "mean"}), end="\n\n\n")
+# Glukoz degerini kategorik değişkene çevirme
+df["NEW_GLUCOSE"] = pd.cut(x=df["Glucose"], bins=[0, 140, 200, 300], labels=["Normal", "Prediabetes", "Diabetes"])
 
-for col in cols:
-    target_summary_with_num(df, "Outcome", col)
+# # Yaş ve beden kitle indeksini bir arada düşünerek kategorik değişken oluşturma
+df.loc[(df["BMI"] < 18.5) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "underweightmature"
+df.loc[(df["BMI"] < 18.5) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "underweightsenior"
+df.loc[((df["BMI"] >= 18.5) & (df["BMI"] < 25)) & (
+        (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "healthymature"
+df.loc[((df["BMI"] >= 18.5) & (df["BMI"] < 25)) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "healthysenior"
+df.loc[((df["BMI"] >= 25) & (df["BMI"] < 30)) & (
+        (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "overweightmature"
+df.loc[((df["BMI"] >= 25) & (df["BMI"] < 30)) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "overweightsenior"
+df.loc[(df["BMI"] > 18.5) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "obesemature"
+df.loc[(df["BMI"] > 18.5) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "obesesenior"
+
+# Yaş ve Glikoz değerlerini bir arada düşünerek kategorik değişken oluşturma
+df.loc[(df["Glucose"] < 70) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "lowmature"
+df.loc[(df["Glucose"] < 70) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "lowsenior"
+df.loc[((df["Glucose"] >= 70) & (df["Glucose"] < 100)) & (
+        (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "normalmature"
+df.loc[((df["Glucose"] >= 70) & (df["Glucose"] < 100)) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "normalsenior"
+df.loc[((df["Glucose"] >= 100) & (df["Glucose"] <= 125)) & (
+        (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "hiddenmature"
+df.loc[((df["Glucose"] >= 100) & (df["Glucose"] <= 125)) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "hiddensenior"
+df.loc[(df["Glucose"] > 125) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "highmature"
+df.loc[(df["Glucose"] > 125) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "highsenior"
 
 
-######################################################
-# Data Preprocessing (Veri Ön İşleme)
-######################################################
+# İnsulin Değeri ile Kategorik değişken türetmek
+def set_insulin(dataframe, col_name="Insulin"):
+    if 16 <= dataframe[col_name] <= 166:
+        return "Normal"
+    else:
+        return "Abnormal"
+
+
+df["NEW_INSULIN_SCORE"] = df.apply(set_insulin, axis=1)
+
+df["NEW_GLUCOSE*INSULIN"] = df["Glucose"] * df["Insulin"]
+df["NEW_GLUCOSE*PREGNANCIES"] = df["Glucose"] * df["Pregnancies"]
+
+# Kolonların büyültülmesi
+df.columns = [col.upper() for col in df.columns]
+
+df.head()
+df.shape
+
+#Adım 3: Encoding işlemlerini gerçekleştiriniz.
+
+# Değişkenlerin tiplerine göre ayrılması işlemi
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+
+
+# LABEL ENCODING
+
+def label_encoder(dataframe, binary_col):
+    labelencoder = LabelEncoder()
+    dataframe[binary_col] = labelencoder.fit_transform(dataframe[binary_col])
+    return dataframe
+
+
+binary_cols = [col for col in df.columns if df[col].dtypes == "O" and df[col].nunique() == 2]
+binary_cols
+
+for col in binary_cols:
+    df = label_encoder(df, col)
+
+df.head()
+
+# One-Hot Encoding İşlemi
+# cat_cols listesinin güncelleme işlemi
+
+cat_cols = [col for col in cat_cols if col not in binary_cols and col not in ["OUTCOME"]]
+cat_cols
+
+
+def one_hot_encoder(dataframe, categorical_cols, drop_first=True):
+    dataframe= pd.get_dummies(dataframe, columns=categorical_cols, drop_first=drop_first)
+    return dataframe
+
+df = one_hot_encoder(df, cat_cols, drop_first=True)
 
 df.shape
 df.head()
 
-df.isnull().sum()
 
-df.describe().T
+#Adım 4: Numerik değişkenler için standartlaştırma yapınız.
 
-for col in cols:
-    print(col, check_outlier(df, col))
+num_cols
 
-replace_with_thresholds(df, "Insulin")
-
-for col in cols:
-    print(col, check_outlier(df, col))
-
-
-
-
-for col in cols:
-    df[col] = RobustScaler().fit_transform(df[[col]])
-
+scaler = StandardScaler()
+df[num_cols] = scaler.fit_transform(df[num_cols])
 
 df.head()
+df.shape
 
 
-######################################################
-# Model & Prediction
-######################################################
 
-y = df["Outcome"]
-X = df.drop(["Outcome"], axis=1)
+# Adım 5: Model oluşturunuz.
 
-log_model = LogisticRegression().fit(X, y)
-
-log_model.intercept_
-log_model.coef_
-
-y_pred = log_model.predict(X)
-
-y_pred[0:10]
-
-y[0:10]
+y = df["OUTCOME"]
+X = df.drop(["OUTCOME"], axis=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
 
 
-######################################################
-# Model Evaluation
-######################################################
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
 
-def plot_confusion_matrix(y, y_pred):
-    acc = round(accuracy_score(y, y_pred), 2)
-    cm = confusion_matrix(y, y_pred)
-    sns.heatmap(cm, annot=True, fmt=".0f")
-    plt.xlabel('y_pred')
-    plt.ylabel('y')
-    plt.title('Accuracy Score: {0}'.format(acc), size=10)
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 2)}")
+print(f"Recall: {round(recall_score(y_pred, y_test), 3)}")
+print(f"Precision: {round(precision_score(y_pred, y_test), 2)}")
+print(f"F1: {round(f1_score(y_pred, y_test), 2)}")
+print(f"Auc: {round(roc_auc_score(y_pred, y_test), 2)}")
+
+
+##################################
+# FEATURE IMPORTANCE
+##################################
+
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    print(feature_imp.sort_values("Value", ascending=False))
+    plt.figure(figsize=(10, 10))
+    sns.set(font_scale=1)
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                     ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
     plt.show(block=True)
-
-plot_confusion_matrix(y, y_pred)
-
-print(classification_report(y, y_pred))
-
-# Accuracy: 0.78
-# Precision: 0.74
-# Recall: 0.58
-# F1-score: 0.65
+    if save:
+        plt.savefig('importances.png')
 
 
-# ROC AUC
-y_prob = log_model.predict_proba(X)[:,1]
-roc_auc_score(y, y_prob)
-#0.83939
-
-
-
-######################################################
-# Model Validation: Holdout
-######################################################
-
-X_train, X_test, y_train, y_test = train_test_split(X,
-                                                    y,
-                                                    test_size=0.20, random_state=17)
-
-log_model = LogisticRegression().fit(X_train, y_train)
-
-y_pred = log_model.predict(X_test)
-y_prob = log_model.predict_proba(X_test)[:, 1]
-
-print(classification_report(y_test, y_pred))
-
-
-# Accuracy: 0.78
-# Precision: 0.74
-# Recall: 0.58
-# F1-score: 0.65
-
-# Accuracy: 0.77
-# Precision: 0.79
-# Recall: 0.53
-# F1-score: 0.63
-
-
-plot_roc_curve(log_model, X_test, y_test)
-plt.title('ROC Curve')
-plt.plot([0, 1], [0, 1], 'r--')
-plt.show(block=True)
-
-# AUC
-roc_auc_score(y_test, y_prob)
-
-
-
-######################################################
-# Model Validation: 10-Fold Cross Validation
-######################################################
-
-y = df["Outcome"]
-X = df.drop(["Outcome"], axis=1)
-
-log_model = LogisticRegression().fit(X, y)
-
-
-cv_results = cross_validate(log_model,
-                            X, y,
-                            cv=5,
-                            scoring=["accuracy", "precision", "recall", "f1", "roc_auc"])
-
-
-# Accuracy: 0.78
-# Precision: 0.74
-# Recall: 0.58
-# F1-score: 0.65
-
-# Accuracy: 0.77
-# Precision: 0.79
-# Recall: 0.53
-# F1-score: 0.63
-
-cv_results['test_accuracy'].mean()
-# Accuracy: 0.7721
-
-cv_results['test_precision'].mean()
-# Precision: 0.7192
-
-cv_results['test_recall'].mean()
-# Recall: 0.5747
-
-cv_results['test_f1'].mean()
-# F1-score: 0.6371
-
-cv_results['test_roc_auc'].mean()
-# AUC: 0.8327
-
-
-######################################################
-# Prediction for A New Observation
-######################################################
-
-X.columns
-
-random_user = X.sample(1, random_state=45)
-log_model.predict(random_user)
+plot_importance(rf_model, X)
 
 
