@@ -1,4 +1,3 @@
-"""
 ###################################################
 # PROJECT: SALARY PREDICTİON WITH MACHINE LEARNING
 ###################################################
@@ -38,39 +37,34 @@
 # Salary: Oyuncunun 1986-1987 sezonunda aldığı maaş(bin uzerinden)
 # NewLeague: 1987 sezonunun başında oyuncunun ligini gösteren A ve N seviyelerine sahip bir faktör
 
-"""
+
 
 ###################################################
 # GÖREV: Veri ön işleme ve özellik mühendisliği tekniklerini kullanarak maaş tahmin modeli geliştiriniz.
 ###################################################
 
-# Gerekli Kütüphane ve Fonksiyonlar
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.neighbors import LocalOutlierFactor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, RobustScaler
+from sklearn.ensemble import RandomForestRegressor
 import warnings
 warnings.simplefilter(action="ignore")
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 170)
-pd.set_option('display.max_rows', 20)
+pd.set_option('display.max_rows', None)
 pd.set_option('display.float_format', lambda x: '%.3f' % x)
 
-
-df=pd.read_csv("machine_learning/datasets/hitters.csv")
-df.head()
-
-##################################
-# GÖREV 1: KEŞİFCİ VERİ ANALİZİ
-##################################
+df = pd.read_csv("machine_learning/datasets/hitters.csv")
 
 ##################################
 # GENEL RESİM
@@ -91,6 +85,7 @@ def check_df(dataframe, head=5):
     print(dataframe.quantile([0, 0.05, 0.50, 0.95, 0.99, 1]).T)
 
 check_df(df)
+
 
 
 ##################################
@@ -162,8 +157,10 @@ cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
 
 ##################################
-# KATEGORİK DEĞİŞKENLERİN ANALİZİ
+# NUMERİK VE KATEGORİK DEĞİŞKEN ANALİZİ
 ##################################
+
+# Kategorik değişkenlerin analizi
 
 def cat_summary(dataframe, col_name, plot=False):
     print(pd.DataFrame({col_name: dataframe[col_name].value_counts(),
@@ -173,10 +170,10 @@ def cat_summary(dataframe, col_name, plot=False):
         sns.countplot(x=dataframe[col_name], data=dataframe)
         plt.show(block=True)
 
+for col in cat_cols:
+    cat_summary(df, col, plot=True)
 
-##################################
-# NUMERİK DEĞİŞKENLERİN ANALİZİ
-##################################
+# Nümerik değişkenlerin analizi
 
 def num_summary(dataframe, numerical_col, plot=False):
     quantiles = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
@@ -188,17 +185,20 @@ def num_summary(dataframe, numerical_col, plot=False):
         plt.title(numerical_col)
         plt.show(block=True)
 
-
 for col in num_cols:
-    num_summary(df, col, plot=True)
+    num_summary(df, col)
+
 
 ##################################
 # NUMERİK DEĞİŞKENLERİN TARGET GÖRE ANALİZİ
 ##################################
 
-
 def target_summary_with_num(dataframe, target, numerical_col):
     print(dataframe.groupby(target).agg({numerical_col: "mean"}), end="\n\n\n")
+
+
+for col in num_cols:
+    target_summary_with_num(df, "Salary", col)
 
 
 ##################################
@@ -206,12 +206,29 @@ def target_summary_with_num(dataframe, target, numerical_col):
 ##################################
 
 def target_summary_with_cat(dataframe, target, categorical_col):
-    print(pd.DataFrame({"TARGET_MEAN": dataframe.groupby(categorical_col)[target].mean()}), end="\n\n\n")
+    print(categorical_col)
+    print(pd.DataFrame({"TARGET_MEAN": dataframe.groupby(categorical_col)[target].mean(),
+                        "Count": dataframe[categorical_col].value_counts(),
+                        "Ratio": 100 * dataframe[categorical_col].value_counts() / len(dataframe)}), end="\n\n\n")
+
+for col in cat_cols:
+    target_summary_with_cat(df, "Salary", col)
+
 
 
 ##################################
-# KORELASYON
+# KORELASYON ANALİZİ
 ##################################
+
+df.corr()
+
+f, ax = plt.subplots(figsize=[18, 13])
+sns.heatmap(df[num_cols].corr(), annot=True, fmt=".2f", ax=ax, cmap="magma")
+ax.set_title("Correlation Matrix", fontsize=20)
+plt.show(block=True)
+
+
+
 
 def high_correlated_cols(dataframe, plot=False, corr_th=0.90):
     corr = dataframe.corr()
@@ -222,45 +239,27 @@ def high_correlated_cols(dataframe, plot=False, corr_th=0.90):
         import seaborn as sns
         import matplotlib.pyplot as plt
         sns.set(rc={'figure.figsize': (15, 15)})
-        sns.heatmap(corr, cmap="RdBu")
+        sns.heatmap(corr, annot=True,cmap="RdBu")
         plt.show(block=True)
     return drop_list
+high_correlated_cols(df, plot=True, corr_th=0.90)
 
-high_correlated_cols(df, plot=False, corr_th=0.90)
-
-
-def target_correlation_matrix(dataframe, corr_th=0.5, target="Salary"):
-    """
-    Bağımlı değişken ile verilen threshold değerinin üzerindeki korelasyona sahip değişkenleri getirir.
-    :param dataframe:
-    :param corr_th: eşik değeri
-    :param target:  bağımlı değişken ismi
-    :return:
-    """
-    corr = dataframe.corr()
-    corr_th = corr_th
-    try:
-        filter = np.abs(corr[target]) > corr_th
-        corr_features = corr.columns[filter].tolist()
-        sns.clustermap(dataframe[corr_features].corr(), annot=True, fmt=".2f")
-        plt.show(block=True)
-        return corr_features
-    except:
-        print("Yüksek threshold değeri, corr_th değerinizi düşürün!")
+#'Hits', 'Runs', 'CAtBat', 'CHits', 'CRuns', 'CRBI', 'CWalks' değişkenlerinin yüksek korelasyonlu olduğunu söyleyebiliriz.
 
 
-target_correlation_matrix(df, corr_th=0.3, target="Salary")
 
 
-#################################
-# GÖREV 2: FEATURE ENGINEERING
+##################################
+# FEATURE ENGINEERING
 ##################################
 
 ##################################
-# AYKIRI DEĞER ANALİZİ
+# AYKIRI GÖZLEM ANALİZİ
 ##################################
 
-def outlier_thresholds(dataframe, col_name, q1=0.25, q3=0.75):
+# Sınırların belirlenmesi
+
+def outlier_thresholds(dataframe, col_name, q1=0.05, q3=0.95):
     quartile1 = dataframe[col_name].quantile(q1)
     quartile3 = dataframe[col_name].quantile(q3)
     interquantile_range = quartile3 - quartile1
@@ -269,56 +268,23 @@ def outlier_thresholds(dataframe, col_name, q1=0.25, q3=0.75):
     return low_limit, up_limit
 
 
-def check_outlier(dataframe, col_name, q1=.25, q3=.75):
+# Aykırı değer var mı yok mu kontrol etme fonksiyonu
+
+def check_outlier(dataframe, col_name, q1= 0.05, q3= 0.95):
     low_limit, up_limit = outlier_thresholds(dataframe, col_name, q1, q3)
     if dataframe[(dataframe[col_name] > up_limit) | (dataframe[col_name] < low_limit)].any(axis=None):
         return True
     else:
         return False
 
-
-def replace_with_thresholds(dataframe, variable, q1=0.25, q3=0.75):
-    low_limit, up_limit = outlier_thresholds(dataframe, variable, q1, q3)
-    dataframe.loc[(dataframe[variable] < low_limit), variable] = low_limit
-    dataframe.loc[(dataframe[variable] > up_limit), variable] = up_limit
-
-
 for col in num_cols:
-    print(col,check_outlier(df,col))
+    print(col, check_outlier(df, col))
 
-###################
-# Aykırı Değerlerin Kendilerine Erişmek
-###################
-
-def grab_outliers(dataframe, col_name, index=False):
-    low, up = outlier_thresholds(dataframe, col_name)
-    if dataframe[((dataframe[col_name] < low) | (dataframe[col_name] > up))].shape[0] > 10:
-        print(dataframe[((dataframe[col_name] < low) | (dataframe[col_name] > up))].head())
-    else:
-        print(dataframe[((dataframe[col_name] < low) | (dataframe[col_name] > up))])
-
-    if index:
-        outlier_index = dataframe[((dataframe[col_name] < low) | (dataframe[col_name] > up))].index
-        return outlier_index
-
-grab_outliers(df, "Salary")
-
-#################################
-# AYKIRI DEĞERLERİ BASKILAMA
-#################################
-
-for col in num_cols:
-    if check_outlier(df, col, q1=0.05, q3=0.95):
-        replace_with_thresholds(df, col, q1=0.05, q3=0.95)
-
-for col in num_cols:
-    print(col, check_outlier(df, col, q1=0.05, q3=0.95))
-
-
+# Outlier yok
 
 
 ##################################
-# EKSİK DEĞER ANALİZİ
+# EKSİK GÖZLEM ANALİZİ
 ##################################
 
 def missing_values_table(dataframe, na_name=False):
@@ -330,32 +296,51 @@ def missing_values_table(dataframe, na_name=False):
     if na_name:
         return na_columns
 
-missing_values_table(df)
+na_columns = missing_values_table(df, na_name=True)
 
-# Salary bağımlı değişkeninde 59 tane eksik gözlem vardır.Bunları çıkartmak bir çözüm yolu olabilir.
+# Salary değişkeninde 59 tane eksik gözlem var.
 
-df_null = df[df["Salary"].isnull()]  # Salary içerisindeki boş değerleri ayıralım.
-df.dropna(inplace=True)  # Salarydeki eksik değerleri çıkartma
+df_eksik = df[df["Salary"].isnull()].head()
+df_eksik
+
+# Bu eksik gözlemlere eriştik.
+
+# Eksik Gözlemlerin Doldurulması.Bu değerleri knn ile dolduralım
+
+from sklearn.impute import KNNImputer
+imputer = KNNImputer(n_neighbors=5)
+df[num_cols] = pd.DataFrame(imputer.fit_transform(df[num_cols]), columns=num_cols)
+df.head()
+
+df.isnull().sum()
 
 
-############################################
-# VERİ ÖNİŞLEME
-############################################
+##################################
+# ÖZELLİK ÇIKARIMI
+##################################
+
+# Kariyerleri ile ilgili olan değişkenler kariyer yıllarına bölünerek ortalama değerler elde edilerek veri setinde yeni değişkenler oluşturulmuştur.
+
+df["OrtCatBat"] = df["CAtBat"] / df["Years"]
+df["OrtCHits"] = df["CHits"] / df["Years"]
+df["OrtCHmRun"] = df["CHmRun"] / df["Years"]
+df["OrtCRuns"] = df["CRuns"] / df["Years"]
+df["OrtCRBI"] = df["CRBI"] / df["Years"]
+df["OrtCWalks"] = df["CWalks"] / df["Years"]
+
+df.head()
+df.shape
+
+##################################
+# ENCODING
+##################################
+
+# Değişkenlerin tiplerine göre ayrılması işlemi
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
 
-df['NEW_HitRatio'] = df['Hits'] / df['AtBat']
-df['NEW_RunRatio'] = df['HmRun'] / df['Runs']
-df['NEW_CHitRatio'] = df['CHits'] / df['CAtBat']
-df['NEW_CRunRatio'] = df['CHmRun'] / df['CRuns']
+# ONE-HOT ENCODING İŞLEMİ
 
-df['NEW_Avg_AtBat'] = df['CAtBat'] / df['Years']
-df['NEW_Avg_Hits'] = df['CHits'] / df['Years']
-df['NEW_Avg_HmRun'] = df['CHmRun'] / df['Years']
-df['NEW_Avg_Runs'] = df['CRuns'] / df['Years']
-df['NEW_Avg_RBI'] = df['CRBI'] / df['Years']
-df['NEW_Avg_Walks'] = df['CWalks'] / df['Years']
-
-# One Hot Encoder
 
 def one_hot_encoder(dataframe, categorical_cols, drop_first=False):
     dataframe = pd.get_dummies(dataframe, columns=categorical_cols, drop_first=drop_first)
@@ -363,48 +348,62 @@ def one_hot_encoder(dataframe, categorical_cols, drop_first=False):
 
 df = one_hot_encoder(df, cat_cols, drop_first=True)
 
+df.shape
+df.head()
 
-############################################
+
+
+##################################
 # MODELLEME
-############################################
+##################################
+
 
 y = df["Salary"]
 X = df.drop(["Salary"], axis=1)
 
-##########################
-# HOLD OUT - MODEL VALIDATION
-##########################
+# Holdout
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=17)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
+rf_model = RandomForestRegressor().fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
 
+# Model train hatası:
 
-reg_model = LinearRegression().fit(X_train, y_train)
-
-# sabit (b - bias)
-reg_model.intercept_
-
-# coefficients (w - weights)
-reg_model.coef_
+y_pred = rf_model.predict(X_train)
+print("RF Tuned Model Train RMSE:", np.sqrt(mean_squared_error(y_train, y_pred)))
+# RF Tuned Model Train RMSE: 98.098209314712
 
 
-# 10 katlı CV (CROSS VALIDATION)
+# Model test hatası:
 
-np.mean(np.sqrt(-cross_val_score(reg_model,X,y,cv=10,scoring="neg_mean_squared_error")))
+y_pred = rf_model.predict(X_test)
+print("RF Tuned Model Test RMSE:", np.sqrt(mean_squared_error(y_test, y_pred)))
+# RF Tuned Model Test RMSE: 298.091865287749
 
-#######################################
+
+# 10 Katlı CV(cross validation) RMSE
+
+# 10 katlı CV RMSE
+
+np.mean(np.sqrt(-cross_val_score(rf_model, X, y, cv=10, scoring="neg_mean_squared_error")))
+
+# 258.25938727950916
+
+##################################
 # FEATURE IMPORTANCE
-#######################################
+##################################
 
 def plot_importance(model, features, num=len(X), save=False):
-    feature_imp = pd.DataFrame({'Value': model.coef_, 'Feature': features.columns})
+    feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
     plt.figure(figsize=(10, 10))
     sns.set(font_scale=1)
-    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value", ascending=False)[0:num])
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                         ascending=False)[0:num])
     plt.title('Features')
     plt.tight_layout()
     plt.show(block=True)
     if save:
         plt.savefig('importances.png')
 
+plot_importance(rf_model, X_train)
 
-plot_importance(reg_model, X)
