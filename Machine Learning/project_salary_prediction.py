@@ -1,5 +1,5 @@
 ###################################################
-# PROJECT: SALARY PREDICTİON WITH MACHINE LEARNING
+# PROJECT: SALARY PREDICTION WITH MACHINE LEARNING
 ###################################################
 
 # İş Problemi
